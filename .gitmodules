@@ -1,0 +1,3 @@
+[submodule "GPGreBezierSplines"]
+	path = GPGreBezierSplines
+	url = https://github.com/gregoiredelzongle/GPGre-Bezier-Splines

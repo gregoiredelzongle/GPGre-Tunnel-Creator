@@ -8,3 +8,5 @@ Start by attaching a **Bezier Spline** component and a **Tunnel Spawner** compon
 You can then edit the tunnel properties in the inspector. By clicking "edit sizes" you add useful handles which help you tweaking the size of your tunnel at several places.
 
 You can then instantiate prefabs along the spline or/and generate a mesh 
+
+NEW : You can add components such as Heightmap Modifier / Heightmap Mask in your Gameobject to modify specific tunnel properties (for now only the spawning is affected, and not the mesh)

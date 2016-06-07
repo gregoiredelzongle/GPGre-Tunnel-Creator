@@ -1,6 +1,10 @@
 ﻿using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 using System.Collections.Generic;
 using GPGre.QuadraticBezier;
+using GPGre.TunnelCreator.Modifiers;
 
 namespace GPGre.TunnelCreator
 {
@@ -16,8 +20,6 @@ namespace GPGre.TunnelCreator
         public GameObject tunnelPrefab;
         // Prefab rotation offset
         public Vector3 rotationOffset;
-        // Does prefab and direct children of the prefab has to be static
-        public bool isPrefabsStatic = false;
 
         #endregion
 
@@ -81,33 +83,55 @@ namespace GPGre.TunnelCreator
                 Vector3 dir = bezierSpline.GetDirectionUniform(t);
                 float size = GetRingSize(t);
                 float noiseZ = i * noiseSize;
-                CreateRing(tunnel, pos, dir, noiseZ, i, size);
+				CreateRing(tunnel, pos, dir, noiseZ, i, steps, size);
             }
         }
 
         /// <summary>
         /// Create a ring of prefabs
         /// </summary>
-        private void CreateRing(GameObject parent, Vector3 pos, Vector3 dir, float noiseZ, int index, float size)
+		private void CreateRing(GameObject parent, Vector3 pos, Vector3 dir, float noiseZ, int index, int steps, float radius)
         {
             GameObject ring = new GameObject("Ring " + index.ToString());
-            RingSpawner ringSpawner = ring.AddComponent<RingSpawner>();
 
-            // Set position
+            // Set ring Transform values
             ring.transform.SetParent(parent.transform, false);
             ring.transform.position = pos;
             ring.transform.rotation = Quaternion.LookRotation(dir);
 
             // Set values
-            ringSpawner.ringPartPrefab = tunnelPrefab;
-            ringSpawner.amount = Mathf.RoundToInt(Mathf.PI * size * tunnelDensity.y);
-            ringSpawner.size = size;
-            ringSpawner.rotationOffset = rotationOffset;
-            ringSpawner.isPrefabsStatic = isPrefabsStatic;
+            int amount = Mathf.RoundToInt(Mathf.PI * radius * tunnelDensity.y);
 
             //Create ring
-            ringSpawner.CreateRing(noiseZ, noiseSize, noiseAmount);
+			for (int i = 0; i < amount; i++)
+			{
+				float angle = ((float)i / (float)amount) * 360;
+				float noise = Mathf.PerlinNoise(i * noiseSize, noiseZ) * noiseAmount;
+				if(ApplyModifiersCondition(index,i,steps,amount))
+					SpawnPrefabAroundParent(ring.transform, index, i, steps, amount, angle, radius, noise);
+			}
         }
+
+		void SpawnPrefabAroundParent(Transform parent, int x, int y, int width, int height, float angle, float distance, float noise)
+		{
+			// Calculate prefab position
+			Quaternion rot = Quaternion.Euler(Vector3.forward * angle);
+			Vector3 localPosition = rot * Vector3.up * (distance + noise);
+			localPosition = ApplyModifiersPrefabPosition (localPosition, x, y, width, height);
+
+			// Instantiate Prefab
+			#if UNITY_EDITOR
+			GameObject go = PrefabUtility.InstantiatePrefab(tunnelPrefab) as GameObject;
+			#else
+			GameObject go = Instantiate<GameObject>(ringPartPrefab);
+			#endif
+
+			// Set prefab Transform values
+			go.transform.SetParent(parent, false);
+			go.transform.localRotation = rot * Quaternion.Euler(rotationOffset + Vector3.up * noise * 360);
+			go.transform.localPosition = localPosition;
+
+		}
         #endregion
 
         #region Tunnel Collider Methods
@@ -242,6 +266,31 @@ namespace GPGre.TunnelCreator
         }
 
         #endregion
+
+		#region Modifiers Functions
+
+		bool ApplyModifiersCondition(int x, int y, int width, int height)
+		{
+			BaseModifier[] modifiers = GetComponents<BaseModifier> ();
+
+			for (int i = 0; i < modifiers.Length; i++) {
+				if (!modifiers [i].ApplyModifierCondition (x, y, width, height))
+					return false;
+			}
+			return true;
+		}
+
+		Vector3 ApplyModifiersPrefabPosition(Vector3 localPos,int x, int y, int width, int height)
+		{
+			BaseModifier[] modifiers = GetComponents<BaseModifier> ();
+
+			for (int i = 0; i < modifiers.Length; i++) {
+				localPos = modifiers [i].ApplyModifierPosition (localPos, x, y, width, height);
+			}
+			return localPos;
+		}
+
+		#endregion
 
         #region Gizmos
         /*

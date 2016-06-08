@@ -48,22 +48,35 @@ public class TunnelSpawnerEditor : Editor
 
         EditorGUI.BeginDisabledGroup(script.bezierSpline == null);
 
-        if (GUILayout.Button("Bake Tunnel"))
+        if (GUILayout.Button("Populate Tunnel With Prefabs"))
         {
-            Transform tunnel = script.transform.Find("Tunnel");
-            if (tunnel != null && script.overrideExistingTunnels)
-                DestroyImmediate(tunnel.gameObject);
-
+			if (script.overrideExistingTunnels) {
+				Transform tunnel = script.transform.Find ("Tunnel");
+				if (tunnel != null)
+					DestroyImmediate (tunnel.gameObject);
+			}
             script.SpawnTunnelPrefabs();
         }
         if (GUILayout.Button("Generate Collider"))
         {
-            Transform col = script.transform.Find("Tunnel Collider");
-            if (col != null)
-                DestroyImmediate(col.gameObject);
+			if (script.overrideExistingTunnels) {
+				Transform col = script.transform.Find ("Tunnel Collider");
+				if (col != null)
+					DestroyImmediate (col.gameObject);
+			}
 
             script.CreateTunnelCollider();
         }
+		if (GUILayout.Button("Generate Mesh"))
+		{
+			if (script.overrideExistingTunnels) {
+				Transform col = script.transform.Find ("Tunnel Mesh");
+				if (col != null)
+					DestroyImmediate (col.gameObject);
+			}
+			script.CreateTunnelMesh ();
+
+		}
         EditorGUI.BeginChangeCheck();
         sizeEditingMode = GUILayout.Toggle(sizeEditingMode, "Edit Tunnel sizes", EditorStyles.miniButton);
         if (EditorGUI.EndChangeCheck())

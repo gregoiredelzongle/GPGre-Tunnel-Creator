@@ -41,6 +41,7 @@ namespace GPGre.TunnelCreator
         [Header("Prefab Parameters")]
         // Prefab to be instantiated along the spline in a tunnel fashion
         public GameObject tunnelPrefab;
+
         // Prefab rotation offset
         public Vector3 rotationOffset;
 
@@ -51,6 +52,9 @@ namespace GPGre.TunnelCreator
         [Header("Tunnel Parameters")]
         // Spline used to generate the tunnel
         public BezierSpline bezierSpline;
+
+		//Tunnel Default Material
+		public Material defaultMaterial;
 
         // Prefab spawn density
         public Vector2 tunnelDensity = Vector2.one;
@@ -71,10 +75,11 @@ namespace GPGre.TunnelCreator
         // Do we have to create a new gameObject or replacing the old one
         public bool overrideExistingTunnels = true;
 
+		[Header("Mesh Parameters")]
         // Collider parameters
-        public float colliderOffset = 0.3f;
-        public float colliderPrecision = 0.2f;
-        public int colliderRadiusVertexCount = 12;
+        public float meshInnerOffset = 0.3f;
+        public float meshPrecision = 0.2f;
+        public int meshRadiusVertexCount = 12;
 
         #endregion
 
@@ -101,7 +106,7 @@ namespace GPGre.TunnelCreator
             int steps = Mathf.RoundToInt(tunnelLength * tunnelDensity.x);
             for (int i = 0; i < steps; i++)
             {
-                float t = (float)i / (float)steps;
+				float t = Mathf.InverseLerp (0, steps - 1, i);
                 Vector3 pos = bezierSpline.GetPointUniform(t);
                 Vector3 dir = bezierSpline.GetDirectionUniform(t);
                 float size = GetRingSize(t);
@@ -157,24 +162,45 @@ namespace GPGre.TunnelCreator
 		}
         #endregion
 
-        #region Tunnel Collider Methods
+        #region Tunnel Mesh Methods
 
+		public void CreateTunnelMesh()
+		{
+			GameObject go = new GameObject("Tunnel Mesh");
+
+			MeshFilter meshFilter = go.AddComponent<MeshFilter>();
+			MeshRenderer meshRenderer = go.AddComponent<MeshRenderer>();
+
+			go.transform.SetParent(transform, false);
+
+			Mesh mesh = new Mesh();
+
+			mesh.name = go.name;
+
+			// Mesh Generation Parameters
+			mesh.vertices  = TunnelVertices();
+			mesh.triangles = TunnelTriangles();
+			mesh.uv = TunnelUV ();
+			mesh.RecalculateNormals ();
+
+			meshRenderer.material = defaultMaterial;
+
+			meshFilter.sharedMesh = mesh;
+		}
 
         public void CreateTunnelCollider()
         {
             GameObject col = new GameObject("Tunnel Collider");
 
-            MeshFilter mesh = col.AddComponent<MeshFilter>();
             MeshCollider meshCol = col.AddComponent<MeshCollider>();
 
             col.transform.SetParent(transform, false);
-            col.isStatic = true;
 
-            mesh.sharedMesh = new Mesh();
-            mesh.sharedMesh.name = "Tunnel Collider";
-            mesh.sharedMesh.vertices = TunnelVertices();
-            mesh.sharedMesh.triangles = TunnelTriangles();
-            meshCol.sharedMesh = mesh.sharedMesh;
+			meshCol.sharedMesh = new Mesh();
+			meshCol.sharedMesh.name = "Tunnel Collider";
+			meshCol.sharedMesh.Clear ();
+			meshCol.sharedMesh.vertices = TunnelVertices();
+			meshCol.sharedMesh.triangles = TunnelTriangles();
         }
 
         Vector3[] TunnelVertices()
@@ -182,22 +208,25 @@ namespace GPGre.TunnelCreator
 
 
             float tunnelLength = bezierSpline.SplineDistance;
-            int ringAmount = Mathf.RoundToInt(tunnelLength * tunnelDensity.x * colliderPrecision);
-
-            Vector3[] vertices = new Vector3[ringAmount * colliderRadiusVertexCount];
+            int ringAmount = Mathf.RoundToInt(tunnelLength * tunnelDensity.x * meshPrecision);
+            Vector3[] vertices = new Vector3[ringAmount * meshRadiusVertexCount];
 
             for (int z = 0, i = 0; z < ringAmount; z++)
             {
-                float t = (float)z / (float)ringAmount;
+				float t = Mathf.InverseLerp (0, ringAmount-1, z);
                 Vector3 ringCenter = bezierSpline.GetPointUniform(t);
                 Vector3 ringDir = bezierSpline.GetDirectionUniform(t);
+
+				if (controlPointSizes == null)
+					RegenerateControlPointSizes ();
+				
                 float size = GetRingSize(t);
 
-                for (int x = 0; x < colliderRadiusVertexCount; x++, i++)
+                for (int x = 0; x < meshRadiusVertexCount; x++, i++)
                 {
-                    float angle = ((float)x / (float)colliderRadiusVertexCount) * 360;
+					float angle = Mathf.InverseLerp(0,meshRadiusVertexCount-1,x) * 360;
                     Quaternion rot = Quaternion.LookRotation(ringDir) * Quaternion.Euler(Vector3.forward * angle);
-                    vertices[i] = (rot * Vector3.up * (size + colliderOffset)) + transform.InverseTransformPoint(ringCenter);
+                    vertices[i] = (rot * Vector3.up * (size + meshInnerOffset)) + transform.InverseTransformPoint(ringCenter);
                 }
             }
             return vertices;
@@ -206,32 +235,59 @@ namespace GPGre.TunnelCreator
         int[] TunnelTriangles()
         {
             float tunnelLength = bezierSpline.SplineDistance;
-            int ringAmount = Mathf.RoundToInt(tunnelLength * tunnelDensity.x * colliderPrecision);
+            int ringAmount = Mathf.RoundToInt(tunnelLength * tunnelDensity.x * meshPrecision);
 
-            int numTriangles = ((ringAmount - 1) * colliderRadiusVertexCount) * 6;
-            int[] triangles = new int[numTriangles];
+            int numTriangles = ((ringAmount - 1) * meshRadiusVertexCount) * 2;
+            int[] triangles = new int[numTriangles*3];
 
-            triangles[0] = colliderRadiusVertexCount - 1;
-            triangles[1] = colliderRadiusVertexCount;
+			triangles[0] = meshRadiusVertexCount - 1;
+			triangles[1] = meshRadiusVertexCount;
             triangles[2] = 0;
 
-            for (int t = 3, i = 0; t < numTriangles - 6; t += 6, i += 1)
+			for (int t = 3, i = 0; t < triangles.Length-6; t += 6, i += 1)
             {
-                triangles[t] = i + colliderRadiusVertexCount;
+				triangles[t] = i + meshRadiusVertexCount;
                 triangles[t + 1] = i + 1;
                 triangles[t + 2] = i;
 
-                triangles[t + 3] = i + colliderRadiusVertexCount + 1;
+				triangles[t + 3] = i + meshRadiusVertexCount + 1;
                 triangles[t + 4] = i + 1;
-                triangles[t + 5] = i + colliderRadiusVertexCount;
+				triangles[t + 5] = i + meshRadiusVertexCount;
 
             }
-            triangles[triangles.Length - 3] = (colliderRadiusVertexCount * ringAmount) - 1;
-            triangles[triangles.Length - 2] = colliderRadiusVertexCount * (ringAmount - 1);
-            triangles[triangles.Length - 1] = (colliderRadiusVertexCount * (ringAmount - 1)) - 1;
+			triangles[triangles.Length - 3] = (meshRadiusVertexCount * ringAmount) - 1;
+			triangles[triangles.Length - 2] = meshRadiusVertexCount * (ringAmount - 1);
+			triangles[triangles.Length - 1] = (meshRadiusVertexCount * (ringAmount - 1)) - 1;
 
             return triangles;
         }
+
+		Vector2[] TunnelUV()
+		{
+			float tunnelLength = bezierSpline.SplineDistance;
+			int ringAmount = Mathf.RoundToInt(tunnelLength * tunnelDensity.x * meshPrecision);
+
+			Vector2[] uv = new Vector2[ringAmount * meshRadiusVertexCount];
+
+			for (int z = 0, i = 0; z < ringAmount; z++)
+			{
+				for (int x = 0; x < meshRadiusVertexCount; x+=2, i+=2)
+				{
+					if (z % 2 == 0) {
+						uv [i] = new Vector2 (0, 1);
+						if(i%meshRadiusVertexCount != meshRadiusVertexCount-1)
+							uv [i + 1] = new Vector2 (0, 0);
+
+					} else {
+						uv [i] = new Vector2 (1, 1);
+						if(i%meshRadiusVertexCount != meshRadiusVertexCount-1)
+							uv [i + 1] = new Vector2 (1, 0);
+					}
+
+				}
+			}
+			return uv;
+		}
 
         #endregion
 
@@ -273,12 +329,16 @@ namespace GPGre.TunnelCreator
                 return;
             }
 
-            controlPointSizes = new float[bezierSpline.CurveCount + 1];
+            float[] newControlPointSizes = new float[bezierSpline.CurveCount + 1];
 
-            for (int i = 0; i < controlPointSizes.Length; i++)
+            for (int i = 0; i < newControlPointSizes.Length; i++)
             {
-                controlPointSizes[i] = defaultRingSize;
+				if(i<controlPointSizes.Length)
+					newControlPointSizes[i] = controlPointSizes[i];
+				else
+                	newControlPointSizes[i] = defaultRingSize;
             }
+			controlPointSizes = newControlPointSizes;
         }
 
         public int ControlPointSizeCount()
@@ -315,32 +375,25 @@ namespace GPGre.TunnelCreator
 
 		#endregion
 
+		/*
         #region Gizmos
-        /*
+        
         void OnDrawGizmosSelected()
         {
 
-
             if (vertices == null)
-            {
-                MeshCollider tunnelCol = transform.GetComponentInChildren<MeshCollider>();
-                if (tunnelCol != null)
-                    vertices = tunnelCol.sharedMesh.vertices;
-
-            }
-
-            if (vertices == null || !showGizmos)
                 return;
 
-            Gizmos.color = Color.white;
+            Gizmos.color = Color.red;
 
             foreach (Vector3 vert in vertices)
             {
                 Gizmos.DrawSphere(transform.TransformPoint(vert), 0.1f);
             }
         }
-        */
+        
         #endregion
+        */
 
     }
 }

@@ -373,9 +373,43 @@ namespace GPGre.TunnelCreator
 			return localPos;
 		}
 
-		#endregion
+        #endregion
 
-		/*
+        #region Tunnel Elements Accessors
+
+        public int RingCount()
+        {
+            return transform.Find("Tunnel").childCount;
+        }
+
+        public int MaxRingElementCount()
+        {
+            float controlPointSize = 0;
+            for (int i = 0; i < controlPointSizes.Length; i++)
+            {
+                if (controlPointSizes[i] > controlPointSize)
+                    controlPointSize = controlPointSizes[i];
+            }
+            return Mathf.RoundToInt(Mathf.PI * controlPointSize * tunnelDensity.y);
+        }
+
+        
+        public Transform GetElementAt(int x, int y)
+        {
+            Transform tunnel = transform.Find("Tunnel");
+            if (x > tunnel.childCount - 1)
+                return null;
+
+            Transform ring = transform.Find("Tunnel").GetChild(x);
+            if (y > ring.childCount - 1)
+                return null;
+
+            return ring.GetChild(y);
+        }
+
+        #endregion
+
+        /*
         #region Gizmos
         
         void OnDrawGizmosSelected()
